@@ -16,6 +16,7 @@ import { tsRestHonoApp } from '@documenso/api/hono';
 import { auth } from '@documenso/auth/server';
 import { API_V2_BETA_URL, API_V2_URL } from '@documenso/lib/constants/app';
 import { jobsClient } from '@documenso/lib/jobs/client';
+import { extractRequestMetadata } from '@documenso/lib/universal/extract-request-metadata';
 import { getIpAddress } from '@documenso/lib/universal/get-ip-address';
 import { logger } from '@documenso/lib/utils/logger';
 import { openApiDocument } from '@documenso/trpc/server/open-api';
@@ -23,11 +24,13 @@ import { openApiDocument } from '@documenso/trpc/server/open-api';
 import { aiRoute } from '../../server/api/ai/route';
 import { downloadRoute } from '../../server/api/download/download';
 import { filesRoute } from '../../server/api/files/files';
+import type { AppContext } from '../../server/context';
 import { openApiTrpcServerHandler } from '../../server/trpc/hono-trpc-open-api';
 import { reactRouterTrpcServer } from '../../server/trpc/hono-trpc-remix';
 
 type HonoEnv = {
   Variables: RequestIdVariables & {
+    context: AppContext;
     logger: Logger;
   };
 };
@@ -68,10 +71,20 @@ const aiRateLimitMiddleware = rateLimiter({
 });
 
 app.use(contextStorage());
+app.use(async (c, next) => {
+  const request = c.req.raw;
+  c.set('context', {
+    requestMetadata: extractRequestMetadata(request),
+  });
+  await next();
+});
 app.use('*', requestId());
 app.use(async (c, next) => {
+  const metadata = c.get('context').requestMetadata;
   const honoLogger = logger.child({
     requestId: c.var.requestId,
+    ipAddress: metadata.ipAddress,
+    userAgent: metadata.userAgent,
   });
 
   c.set('logger', honoLogger);
