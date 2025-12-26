@@ -1,8 +1,8 @@
 /**
- * Catch-all API route that delegates to the Hono router.
+ * Hono API handler for Vercel deployments.
  *
- * This is needed for Vercel deployments where the Hono server adapter
- * is not used and API routes need to be handled through React Router.
+ * This is used when the Hono server adapter is disabled (Vercel)
+ * and API routes need to be handled through React Router.
  */
 import { Hono } from 'hono';
 import { rateLimiter } from 'hono-rate-limiter';
@@ -20,11 +20,11 @@ import { getIpAddress } from '@documenso/lib/universal/get-ip-address';
 import { logger } from '@documenso/lib/utils/logger';
 import { openApiDocument } from '@documenso/trpc/server/open-api';
 
-import { aiRoute } from '../../../server/api/ai/route';
-import { downloadRoute } from '../../../server/api/download/download';
-import { filesRoute } from '../../../server/api/files/files';
-import { openApiTrpcServerHandler } from '../../../server/trpc/hono-trpc-open-api';
-import { reactRouterTrpcServer } from '../../../server/trpc/hono-trpc-remix';
+import { aiRoute } from '../../server/api/ai/route';
+import { downloadRoute } from '../../server/api/download/download';
+import { filesRoute } from '../../server/api/files/files';
+import { openApiTrpcServerHandler } from '../../server/trpc/hono-trpc-open-api';
+import { reactRouterTrpcServer } from '../../server/trpc/hono-trpc-remix';
 
 type HonoEnv = {
   Variables: RequestIdVariables & {
@@ -120,16 +120,8 @@ app.route(`${v2BetaPath}`, downloadRoute);
 app.use(`${v2BetaPath}/*`, async (c) => await openApiTrpcServerHandler(c, { isBeta: true }));
 
 /**
- * Handle all API requests using Hono's fetch handler.
+ * Handle API requests using Hono's fetch handler.
  */
-const handleRequest = async (request: Request): Promise<Response> => {
+export const handleApiRequest = async (request: Request): Promise<Response> => {
   return app.fetch(request);
-};
-
-export const loader = async ({ request }: { request: Request }) => {
-  return handleRequest(request);
-};
-
-export const action = async ({ request }: { request: Request }) => {
-  return handleRequest(request);
 };
