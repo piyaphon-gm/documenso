@@ -6,7 +6,7 @@
     "build": "./.bin/build.sh",
     "build:app": "npm run typecheck && cross-env NODE_ENV=production react-router build",
     "build:server": "cross-env NODE_ENV=production rollup -c rollup.config.mjs",
-    "build:vercel": "cd ../.. && npm run prisma:generate && npm run translate:compile && cd apps/remix && npm run build:app",
+    "build:vercel": "cd ../.. && npm run prisma:generate && npm run translate:compile && cd apps/remix && cross-env NODE_ENV=production react-router build",
     "dev": "npm run with:env -- react-router dev",
     "dev:billing": "bash .bin/stripe-dev.sh",
     "start": "npm run with:env -- cross-env NODE_ENV=production node build/server/main.js",
