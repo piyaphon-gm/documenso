@@ -295,183 +295,192 @@ export const createEnvelope = async ({
   const delegatedOwner = await getValidatedDelegatedOwner();
   const envelopeOwnerId = delegatedOwner?.id ?? userId;
 
-  return await prisma.$transaction(async (tx) => {
-    const envelope = await tx.envelope.create({
-      data: {
-        id: prefixedId('envelope'),
-        secondaryId,
-        internalVersion,
-        type,
-        title,
-        qrToken: prefixedId('qr'),
-        externalId,
-        envelopeItems: {
-          createMany: {
-            data: envelopeItems.map((item, i) => ({
-              id: prefixedId('envelope_item'),
-              title: item.title || title,
-              order: item.order !== undefined ? item.order : i + 1,
-              documentDataId: item.documentDataId,
-            })),
+  return await prisma.$transaction(
+    async (tx) => {
+      const envelope = await tx.envelope.create({
+        data: {
+          id: prefixedId('envelope'),
+          secondaryId,
+          internalVersion,
+          type,
+          title,
+          qrToken: prefixedId('qr'),
+          externalId,
+          envelopeItems: {
+            createMany: {
+              data: envelopeItems.map((item, i) => ({
+                id: prefixedId('envelope_item'),
+                title: item.title || title,
+                order: item.order !== undefined ? item.order : i + 1,
+                documentDataId: item.documentDataId,
+              })),
+            },
           },
-        },
-        envelopeAttachments: {
-          createMany: {
-            data: (attachments || []).map((attachment) => ({
-              label: attachment.label,
-              data: attachment.data,
-              type: attachment.type ?? 'link',
-            })),
+          envelopeAttachments: {
+            createMany: {
+              data: (attachments || []).map((attachment) => ({
+                label: attachment.label,
+                data: attachment.data,
+                type: attachment.type ?? 'link',
+              })),
+            },
           },
+          userId: envelopeOwnerId,
+          teamId,
+          authOptions,
+          visibility,
+          folderId,
+          formValues,
+          source:
+            type === EnvelopeType.DOCUMENT ? DocumentSource.DOCUMENT : DocumentSource.TEMPLATE,
+          documentMetaId: documentMeta.id,
+
+          // Template specific fields.
+          templateType: type === EnvelopeType.TEMPLATE ? templateType : undefined,
+          publicTitle: type === EnvelopeType.TEMPLATE ? publicTitle : undefined,
+          publicDescription: type === EnvelopeType.TEMPLATE ? publicDescription : undefined,
         },
-        userId: envelopeOwnerId,
-        teamId,
-        authOptions,
-        visibility,
-        folderId,
-        formValues,
-        source: type === EnvelopeType.DOCUMENT ? DocumentSource.DOCUMENT : DocumentSource.TEMPLATE,
-        documentMetaId: documentMeta.id,
+        include: {
+          envelopeItems: true,
+        },
+      });
 
-        // Template specific fields.
-        templateType: type === EnvelopeType.TEMPLATE ? templateType : undefined,
-        publicTitle: type === EnvelopeType.TEMPLATE ? publicTitle : undefined,
-        publicDescription: type === EnvelopeType.TEMPLATE ? publicDescription : undefined,
-      },
-      include: {
-        envelopeItems: true,
-      },
-    });
+      const firstEnvelopeItem = envelope.envelopeItems[0];
 
-    const firstEnvelopeItem = envelope.envelopeItems[0];
+      await Promise.all(
+        (data.recipients || []).map(async (recipient) => {
+          const recipientAuthOptions = createRecipientAuthOptions({
+            accessAuth: recipient.accessAuth ?? [],
+            actionAuth: recipient.actionAuth ?? [],
+          });
 
-    await Promise.all(
-      (data.recipients || []).map(async (recipient) => {
-        const recipientAuthOptions = createRecipientAuthOptions({
-          accessAuth: recipient.accessAuth ?? [],
-          actionAuth: recipient.actionAuth ?? [],
-        });
+          const recipientFieldsToCreate = (recipient.fields || []).map((field) => {
+            let envelopeItemId = firstEnvelopeItem.id;
 
-        const recipientFieldsToCreate = (recipient.fields || []).map((field) => {
-          let envelopeItemId = firstEnvelopeItem.id;
+            if (field.documentDataId) {
+              const foundEnvelopeItem = envelope.envelopeItems.find(
+                (item) => item.documentDataId === field.documentDataId,
+              );
 
-          if (field.documentDataId) {
-            const foundEnvelopeItem = envelope.envelopeItems.find(
-              (item) => item.documentDataId === field.documentDataId,
-            );
+              if (!foundEnvelopeItem) {
+                throw new AppError(AppErrorCode.NOT_FOUND, {
+                  message: 'Document data not found',
+                });
+              }
 
-            if (!foundEnvelopeItem) {
-              throw new AppError(AppErrorCode.NOT_FOUND, {
-                message: 'Document data not found',
-              });
+              envelopeItemId = foundEnvelopeItem.id;
             }
 
-            envelopeItemId = foundEnvelopeItem.id;
-          }
+            return {
+              envelopeId: envelope.id,
+              envelopeItemId,
+              type: field.type,
+              page: field.page,
+              positionX: field.positionX,
+              positionY: field.positionY,
+              width: field.width,
+              height: field.height,
+              customText: '',
+              inserted: false,
+              fieldMeta: field.fieldMeta || undefined,
+            };
+          });
 
-          return {
-            envelopeId: envelope.id,
-            envelopeItemId,
-            type: field.type,
-            page: field.page,
-            positionX: field.positionX,
-            positionY: field.positionY,
-            width: field.width,
-            height: field.height,
-            customText: '',
-            inserted: false,
-            fieldMeta: field.fieldMeta || undefined,
-          };
-        });
-
-        await tx.recipient.create({
-          data: {
-            envelopeId: envelope.id,
-            name: recipient.name,
-            email: recipient.email,
-            role: recipient.role,
-            signingOrder: recipient.signingOrder,
-            token: nanoid(),
-            sendStatus: recipient.role === RecipientRole.CC ? SendStatus.SENT : SendStatus.NOT_SENT,
-            signingStatus:
-              recipient.role === RecipientRole.CC ? SigningStatus.SIGNED : SigningStatus.NOT_SIGNED,
-            authOptions: recipientAuthOptions,
-            fields: {
-              createMany: {
-                data: recipientFieldsToCreate,
+          await tx.recipient.create({
+            data: {
+              envelopeId: envelope.id,
+              name: recipient.name,
+              email: recipient.email,
+              role: recipient.role,
+              signingOrder: recipient.signingOrder,
+              token: nanoid(),
+              sendStatus:
+                recipient.role === RecipientRole.CC ? SendStatus.SENT : SendStatus.NOT_SENT,
+              signingStatus:
+                recipient.role === RecipientRole.CC
+                  ? SigningStatus.SIGNED
+                  : SigningStatus.NOT_SIGNED,
+              authOptions: recipientAuthOptions,
+              fields: {
+                createMany: {
+                  data: recipientFieldsToCreate,
+                },
               },
             },
-          },
-        });
-      }),
-    );
-
-    const createdEnvelope = await tx.envelope.findFirst({
-      where: {
-        id: envelope.id,
-      },
-      include: {
-        documentMeta: true,
-        recipients: true,
-        fields: true,
-        folder: true,
-        envelopeItems: true,
-        envelopeAttachments: true,
-      },
-    });
-
-    if (!createdEnvelope) {
-      throw new AppError(AppErrorCode.NOT_FOUND, {
-        message: 'Envelope not found',
-      });
-    }
-
-    // Only create audit logs and webhook events for documents.
-    if (type === EnvelopeType.DOCUMENT) {
-      await tx.documentAuditLog.create({
-        data: createDocumentAuditLogData({
-          type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_CREATED,
-          envelopeId: envelope.id,
-          user: {
-            id: envelopeOwnerId,
-          },
-          metadata: requestMetadata,
-          data: {
-            title,
-            source: {
-              type: DocumentSource.DOCUMENT,
-            },
-          },
+          });
         }),
+      );
+
+      const createdEnvelope = await tx.envelope.findFirst({
+        where: {
+          id: envelope.id,
+        },
+        include: {
+          documentMeta: true,
+          recipients: true,
+          fields: true,
+          folder: true,
+          envelopeItems: true,
+          envelopeAttachments: true,
+        },
       });
 
-      // Create audit log for delegated owner if validation passed
-      if (delegatedOwner) {
-        await tx.documentAuditLog.create({
-          data: createDocumentAuditLogData({
-            type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_DELEGATED_OWNER_CREATED,
-            envelopeId: envelope.id,
-            user: {
-              id: userId,
-            },
-            metadata: requestMetadata,
-            data: {
-              delegatedOwnerName: delegatedOwner.name,
-              delegatedOwnerEmail: delegatedOwner.email,
-              teamName: team.name,
-            },
-          }),
+      if (!createdEnvelope) {
+        throw new AppError(AppErrorCode.NOT_FOUND, {
+          message: 'Envelope not found',
         });
       }
 
-      await triggerWebhook({
-        event: WebhookTriggerEvents.DOCUMENT_CREATED,
-        data: ZWebhookDocumentSchema.parse(mapEnvelopeToWebhookDocumentPayload(createdEnvelope)),
-        userId,
-        teamId,
-      });
-    }
+      // Only create audit logs and webhook events for documents.
+      if (type === EnvelopeType.DOCUMENT) {
+        await tx.documentAuditLog.create({
+          data: createDocumentAuditLogData({
+            type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_CREATED,
+            envelopeId: envelope.id,
+            user: {
+              id: envelopeOwnerId,
+            },
+            metadata: requestMetadata,
+            data: {
+              title,
+              source: {
+                type: DocumentSource.DOCUMENT,
+              },
+            },
+          }),
+        });
 
-    return createdEnvelope;
-  });
+        // Create audit log for delegated owner if validation passed
+        if (delegatedOwner) {
+          await tx.documentAuditLog.create({
+            data: createDocumentAuditLogData({
+              type: DOCUMENT_AUDIT_LOG_TYPE.DOCUMENT_DELEGATED_OWNER_CREATED,
+              envelopeId: envelope.id,
+              user: {
+                id: userId,
+              },
+              metadata: requestMetadata,
+              data: {
+                delegatedOwnerName: delegatedOwner.name,
+                delegatedOwnerEmail: delegatedOwner.email,
+                teamName: team.name,
+              },
+            }),
+          });
+        }
+
+        await triggerWebhook({
+          event: WebhookTriggerEvents.DOCUMENT_CREATED,
+          data: ZWebhookDocumentSchema.parse(mapEnvelopeToWebhookDocumentPayload(createdEnvelope)),
+          userId,
+          teamId,
+        });
+      }
+
+      return createdEnvelope;
+    },
+    {
+      timeout: 30_000,
+    },
+  );
 };
