@@ -27,6 +27,18 @@ export const ZGetPresignedPostUrlResponseSchema = z.object({
 export type TGetPresignedPostUrlRequest = z.infer<typeof ZGetPresignedPostUrlRequestSchema>;
 export type TGetPresignedPostUrlResponse = z.infer<typeof ZGetPresignedPostUrlResponseSchema>;
 
+export const ZGetPresignedGetUrlRequestSchema = z.object({
+  key: z.string().min(1),
+});
+
+export const ZGetPresignedGetUrlResponseSchema = z.object({
+  key: z.string().min(1),
+  url: z.string().min(1),
+});
+
+export type TGetPresignedGetUrlRequest = z.infer<typeof ZGetPresignedGetUrlRequestSchema>;
+export type TGetPresignedGetUrlResponse = z.infer<typeof ZGetPresignedGetUrlResponseSchema>;
+
 export const ZGetEnvelopeItemFileRequestParamsSchema = z.object({
   envelopeId: z.string().min(1),
   envelopeItemId: z.string().min(1),
