@@ -8,23 +8,18 @@ import { AppError, AppErrorCode } from '@documenso/lib/errors/app-error';
 import { verifyEmbeddingPresignToken } from '@documenso/lib/server-only/embedding-presign/verify-embedding-presign-token';
 import { getTeamById } from '@documenso/lib/server-only/team/get-team';
 import { putNormalizedPdfFileServerSide } from '@documenso/lib/universal/upload/put-file.server';
-import {
-  getPresignGetUrl,
-  getPresignPostUrl,
-} from '@documenso/lib/universal/upload/server-actions';
+import { getPresignPostUrl } from '@documenso/lib/universal/upload/server-actions';
 import { prisma } from '@documenso/prisma';
 
 import type { HonoEnv } from '../../router';
 import { handleEnvelopeItemFileRequest } from './files.helpers';
 import {
-  type TGetPresignedGetUrlResponse,
   type TGetPresignedPostUrlResponse,
   ZGetEnvelopeItemFileDownloadRequestParamsSchema,
   ZGetEnvelopeItemFileRequestParamsSchema,
   ZGetEnvelopeItemFileRequestQuerySchema,
   ZGetEnvelopeItemFileTokenDownloadRequestParamsSchema,
   ZGetEnvelopeItemFileTokenRequestParamsSchema,
-  ZGetPresignedGetUrlRequestSchema,
   ZGetPresignedPostUrlRequestSchema,
   ZUploadPdfRequestSchema,
 } from './files.types';
@@ -66,19 +61,6 @@ export const filesRoute = new Hono<HonoEnv>()
       const { key, url } = await getPresignPostUrl(fileName, contentType);
 
       return c.json({ key, url } satisfies TGetPresignedPostUrlResponse);
-    } catch (err) {
-      console.error(err);
-
-      throw new AppError(AppErrorCode.UNKNOWN_ERROR);
-    }
-  })
-  .post('/presigned-get-url', sValidator('json', ZGetPresignedGetUrlRequestSchema), async (c) => {
-    const { key } = c.req.valid('json');
-
-    try {
-      const { url } = await getPresignGetUrl(key);
-
-      return c.json({ key, url } satisfies TGetPresignedGetUrlResponse);
     } catch (err) {
       console.error(err);
 

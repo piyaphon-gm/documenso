@@ -94,7 +94,7 @@ const putFileInS3 = async (file: File) => {
   const reponse = await fetch(url, {
     method: 'PUT',
     headers: {
-      'Content-Type': 'application/octet-stream',
+      'Content-Type': file.type || 'application/octet-stream',
     },
     body,
   });
